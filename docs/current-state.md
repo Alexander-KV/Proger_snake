@@ -13,5 +13,3 @@ Backend, БД, игровой движок и запуск алгоритмов 
 ## Требования
 
 - [README.md](../README.md) — предварительное ТЗ, архитектура и открытые вопросы.
-- [TZ](../TZ) — текстовая копия ТЗ.
-- [Snake_Arena_Functionality_v2.docx](../Snake_Arena_Functionality_v2.docx) — исходное ТЗ.
