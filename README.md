@@ -289,18 +289,16 @@
 
 ### Локальный запуск backend
 
-Требуется Python 3.11 или новее. В одном терминале из корня проекта:
+Требуются Python 3.11 или новее и `uv`. В одном терминале из корня проекта:
 
 ```sh
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -r backend/requirements.txt
-uvicorn backend.main:app --reload
+uv sync --project backend --locked
+uv run --project backend --locked uvicorn backend.main:app --reload
 ```
 
 В другом терминале выполните `npm ci` и `npm run dev`. Vite перенаправляет
 `/api` на FastAPI по адресу `127.0.0.1:8000`. SQLite-файл создаётся в `data/`
-и не включается в Git. Backend-тесты: `python -m pytest backend/tests`.
+и не включается в Git. Backend-тесты: `uv run --project backend --locked python -m pytest backend/tests`. Зависимости зафиксированы в `backend/uv.lock`.
 Текущая конфигурация рассчитана на локальный HTTP: перед публикацией необходимо
 настроить HTTPS и Secure-cookie, доверенный прокси и ограничения запросов для
 многопроцессного запуска.
