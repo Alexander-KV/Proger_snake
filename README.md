@@ -190,7 +190,7 @@
 
 - **Frontend:** React, TS.
 - **Backend:** Python, FastAPI.
-- **Database:** SQLite.
+- **Database:** SQLite, SQLModel.
 - **Обмен данными:** REST API, WebSocket.
 - **Редактор кода:** Monaco Editor.
 - **Локальный запуск:** без Docker; база данных хранится в `data/`.

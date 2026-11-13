@@ -1,7 +1,6 @@
 import hashlib
 import re
 import secrets
-import sqlite3
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
@@ -12,6 +11,11 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, field_validator
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.engine import URL
+from sqlmodel import Session, SQLModel, create_engine, select
+
+from backend.models import AuthSession, Team
 
 
 class Login(BaseModel):
@@ -50,20 +54,14 @@ def create_app(db_path=Path('data/snake-arena.db')):
     hasher = PasswordHasher()
     attempts = defaultdict(deque)
 
-    def connect():
-        db = sqlite3.connect(db_path, timeout=10)
-        db.row_factory = sqlite3.Row
-        return db
+    engine = create_engine(URL.create('sqlite', database=str(db_path)), connect_args={'timeout': 10, 'check_same_thread': False})
 
     @asynccontextmanager
     async def lifespan(_app):
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        with connect() as db:
-            db.executescript('''
-                CREATE TABLE IF NOT EXISTS teams (id INTEGER PRIMARY KEY, username TEXT NOT NULL COLLATE NOCASE UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL);
-                CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, team_id INTEGER NOT NULL REFERENCES teams(id), expires REAL NOT NULL);
-            ''')
+        SQLModel.metadata.create_all(engine)
         yield
+        engine.dispose()
 
     app = FastAPI(lifespan=lifespan)
 
@@ -84,48 +82,59 @@ def create_app(db_path=Path('data/snake-arena.db')):
                 queue.append(now)
         return await call_next(request)
 
-    def set_session(db, team_id, response):
+    def set_session(db: Session, team_id: int, response: Response):
         token = secrets.token_urlsafe(32)
-        db.execute('INSERT INTO sessions VALUES (?, ?, ?)', (hashlib.sha256(token.encode()).hexdigest(), team_id, time.time() + 604800))
+        db.add(AuthSession(token_hash=hashlib.sha256(token.encode()).hexdigest(), team_id=team_id, expires=time.time() + 604800))
         response.set_cookie('session', token, max_age=604800, httponly=True, samesite='lax', secure=False, path='/')
 
     @app.post('/api/auth/register', status_code=201)
     def register(data: Registration, response: Response):
-        with connect() as db:
+        with Session(engine) as db:
+            team = Team(username=data.username, name=data.name, password_hash=hasher.hash(data.password))
+            db.add(team)
             try:
-                cur = db.execute('INSERT INTO teams (username, name, password_hash) VALUES (?, ?, ?)', (data.username, data.name, hasher.hash(data.password)))
-            except sqlite3.IntegrityError:
+                db.flush()
+            except IntegrityError:
+                db.rollback()
                 raise HTTPException(409, 'Username уже занят')
-            set_session(db, cur.lastrowid, response)
+            assert team.id is not None
+            set_session(db, team.id, response)
+            db.commit()
         return {'username': data.username, 'name': data.name}
 
     @app.post('/api/auth/login')
     def login(data: Login, response: Response):
-        with connect() as db:
-            team = db.execute('SELECT * FROM teams WHERE username = ?', (data.username,)).fetchone()
+        with Session(engine) as db:
+            team = db.exec(select(Team).where(Team.username == data.username)).first()
             try:
-                valid = team and hasher.verify(team['password_hash'], data.password)
+                valid = team and hasher.verify(team.password_hash, data.password)
             except VerifyMismatchError:
                 valid = False
-            if not valid:
+            if not valid or team is None:
                 raise HTTPException(401, 'Неверный username или пароль')
-            set_session(db, team['id'], response)
-            return {'username': team['username'], 'name': team['name']}
+            assert team.id is not None
+            set_session(db, team.id, response)
+            db.commit()
+            return {'username': team.username, 'name': team.name}
 
     @app.get('/api/auth/me')
     def me(request: Request):
         token = request.cookies.get('session', '')
-        with connect() as db:
-            team = db.execute('SELECT teams.username, teams.name FROM sessions JOIN teams ON teams.id = sessions.team_id WHERE token_hash = ? AND expires > ?', (hashlib.sha256(token.encode()).hexdigest(), time.time())).fetchone()
-        if not team:
-            raise HTTPException(401, 'Требуется вход')
-        return dict(team)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        with Session(engine) as db:
+            team = db.exec(select(Team).join(AuthSession, Team.id == AuthSession.team_id).where(AuthSession.token_hash == token_hash, AuthSession.expires > time.time())).first()
+            if not team:
+                raise HTTPException(401, 'Требуется вход')
+            return {'username': team.username, 'name': team.name}
 
     @app.post('/api/auth/logout', status_code=204)
     def logout(request: Request, response: Response):
         token = request.cookies.get('session', '')
-        with connect() as db:
-            db.execute('DELETE FROM sessions WHERE token_hash = ?', (hashlib.sha256(token.encode()).hexdigest(),))
+        with Session(engine) as db:
+            session = db.get(AuthSession, hashlib.sha256(token.encode()).hexdigest())
+            if session:
+                db.delete(session)
+                db.commit()
         response.delete_cookie('session', path='/')
 
     return app
