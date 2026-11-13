@@ -4,6 +4,7 @@ import secrets
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
+from ipaddress import ip_address
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -11,8 +12,8 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, field_validator
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.engine import URL
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from backend.models import AuthSession, Team
@@ -37,8 +38,8 @@ class Registration(Login):
     @classmethod
     def valid_name(cls, value):
         value = value.strip()
-        if not re.fullmatch(r'[0-9]{1,15}', value):
-            raise ValueError('Название должно содержать только цифры')
+        if not re.fullmatch(r'[A-Za-zА-Яа-яЁё0-9_ ]{1,15}', value):
+            raise ValueError('Название должно содержать до 15 русских или английских букв, цифр, пробелов и знаков подчёркивания')
         return value
 
     @field_validator('password')
@@ -54,7 +55,8 @@ def create_app(db_path=Path('data/snake-arena.db')):
     hasher = PasswordHasher()
     attempts = defaultdict(deque)
 
-    engine = create_engine(URL.create('sqlite', database=str(db_path)), connect_args={'timeout': 10, 'check_same_thread': False})
+    engine = create_engine(URL.create('sqlite', database=str(db_path)),
+                           connect_args={'timeout': 10, 'check_same_thread': False})
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -73,6 +75,14 @@ def create_app(db_path=Path('data/snake-arena.db')):
                 return Response(status_code=403)
             if request.url.path in ('/api/auth/login', '/api/auth/register'):
                 key = request.client.host if request.client else 'unknown'
+                if key in ('127.0.0.1', '::1'):
+                    forwarded = request.headers.get('x-snake-client-ip')
+                    if forwarded:
+                        try:
+                            address = ip_address(forwarded)
+                            key = str(getattr(address, 'ipv4_mapped', None) or address)
+                        except ValueError:
+                            pass
                 now = time.monotonic()
                 queue = attempts[key]
                 while queue and queue[0] < now - 60:
@@ -84,7 +94,8 @@ def create_app(db_path=Path('data/snake-arena.db')):
 
     def set_session(db: Session, team_id: int, response: Response):
         token = secrets.token_urlsafe(32)
-        db.add(AuthSession(token_hash=hashlib.sha256(token.encode()).hexdigest(), team_id=team_id, expires=time.time() + 604800))
+        db.add(AuthSession(token_hash=hashlib.sha256(token.encode()).hexdigest(), team_id=team_id,
+                           expires=time.time() + 604800))
         response.set_cookie('session', token, max_age=604800, httponly=True, samesite='lax', secure=False, path='/')
 
     @app.post('/api/auth/register', status_code=201)
@@ -122,7 +133,8 @@ def create_app(db_path=Path('data/snake-arena.db')):
         token = request.cookies.get('session', '')
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         with Session(engine) as db:
-            team = db.exec(select(Team).join(AuthSession, Team.id == AuthSession.team_id).where(AuthSession.token_hash == token_hash, AuthSession.expires > time.time())).first()
+            team = db.exec(select(Team).join(AuthSession, Team.id == AuthSession.team_id).where(
+                AuthSession.token_hash == token_hash, AuthSession.expires > time.time())).first()
             if not team:
                 raise HTTPException(401, 'Требуется вход')
             return {'username': team.username, 'name': team.name}
