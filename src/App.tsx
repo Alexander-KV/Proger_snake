@@ -74,7 +74,7 @@ function App() {
           </svg>
           <span>SNAKE ARENA<span className="brand-dot text-accent">.</span></span>
         </a>
-        <div className="header-auth">{team ? <><span>Команда {team.name}</span><button onClick={async () => { try { const response = await fetch('/api/auth/logout', { method: 'POST' }); if (response.ok) { setTeam(null); setActiveSection(null) } } catch { /* Сессия сохраняется до успешного выхода. */ } }}>Выйти</button></> : <><button onClick={() => setAuthMode('login')}>Войти</button><button onClick={() => setAuthMode('register')}>Регистрация</button></>}</div>
+        <div className="header-auth">{team ? <><span>Команда {team.name}</span><button onClick={async () => { try { const response = await fetch('/api/auth/logout', { method: 'POST' }); if (response.ok) { setTeam(null); setActiveSection(null) } } catch { /* Сессия сохраняется до успешного выхода. */ } }}>Выйти</button></> : <><button onClick={() => setAuthMode('login')}>Войти</button><button className="header-register" onClick={() => setAuthMode('register')}>Регистрация</button></>}</div>
       </header>
 
       <main id="main" className="main-layout">
