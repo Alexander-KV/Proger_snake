@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import AuthDialog from './AuthDialog'
 import './App.css'
 
 const sections = [
@@ -33,12 +34,20 @@ function ArenaVisual() {
 }
 
 function App() {
+  const [team, setTeam] = useState<{ username: string; name: string } | null>(null)
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'required' | null>(null)
+  const [sessionLoading, setSessionLoading] = useState(true)
+  useEffect(() => {
+    fetch('/api/auth/me').then(async response => { if (response.ok) setTeam(await response.json()) }).catch(() => {}).finally(() => setSessionLoading(false))
+  }, [])
   const [activeSection, setActiveSection] = useState<number | null>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([])
   const selected = activeSection === null ? null : sections[activeSection]
 
   function openSection(index: number) {
+    if (sessionLoading) return
+    if (!team && index !== 4) { setAuthMode('required'); return }
     setActiveSection(index)
     requestAnimationFrame(() => headingRef.current?.focus())
   }
@@ -47,20 +56,25 @@ function App() {
     const previous = activeSection
     setActiveSection(null)
     requestAnimationFrame(() => {
-      if (previous !== null) buttonRefs.current[previous]?.focus()
+      if (previous !== null) buttonRefs.current[previous]?.focus({ preventScroll: true })
     })
   }
 
   return (
     <div className="app-shell">
+      {authMode && <AuthDialog key={authMode} mode={authMode} onClose={() => setAuthMode(null)} onMode={setAuthMode} onSuccess={value => { setTeam(value); setAuthMode(null) }} />}
       <header className="site-header flex items-center justify-between">
-        <a className="brand flex items-center gap-3" href="#main" aria-label="Snake Arena — к главному экрану">
+        <a className="brand flex items-center gap-3" href="#main" onClick={(event) => {
+          event.preventDefault()
+          returnToMenu()
+          window.scrollTo(0, 0)
+        }} aria-label="Snake Arena — к главному экрану">
           <svg width="25" height="25" viewBox="0 0 25 25" fill="none" aria-hidden="true">
             <path d="M3 21V4H14V12H22V21H11V13" stroke="currentColor" strokeWidth="3" />
           </svg>
           <span>SNAKE ARENA<span className="brand-dot text-accent">.</span></span>
         </a>
-        <span className="header-caption">СОРЕВНОВАНИЯ АЛГОРИТМОВ</span>
+        <div className="header-auth">{team ? <><span>Команда {team.name}</span><button onClick={async () => { try { const response = await fetch('/api/auth/logout', { method: 'POST' }); if (response.ok) { setTeam(null); setActiveSection(null) } } catch { /* Сессия сохраняется до успешного выхода. */ } }}>Выйти</button></> : <><button onClick={() => setAuthMode('login')}>Войти</button><button onClick={() => setAuthMode('register')}>Регистрация</button></>}</div>
       </header>
 
       <main id="main" className="main-layout">

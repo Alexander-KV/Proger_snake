@@ -25,3 +25,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python и локальные данные
+.venv/
+__pycache__/
+.pytest_cache/
+data/
