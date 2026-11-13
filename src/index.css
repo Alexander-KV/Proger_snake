@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme {
   --color-accent: #a61932;
@@ -18,8 +18,24 @@
   color-scheme: light;
 }
 
-body { margin: 0; min-width: 360px; }
-button, a { -webkit-tap-highlight-color: transparent; }
-button { font: inherit; cursor: pointer; }
-button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 5px; }
-::selection { background: var(--color-accent); color: white; }
+body {
+  margin: 0;
+  min-width: 360px;
+}
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+button {
+  font: inherit;
+  cursor: pointer;
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 5px;
+}
+::selection {
+  background: var(--color-accent);
+  color: white;
+}

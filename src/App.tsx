@@ -3,11 +3,36 @@ import AuthDialog from './AuthDialog'
 import './App.css'
 
 const sections = [
-  { title: 'Создать матч', description: 'Собери команды. Задай условия. Начни игру.', detail: 'Здесь появятся настройки поля, выбор команд и запуск соревнования.' },
-  { title: 'Матчи', description: 'Следи за игрой алгоритмов на арене.', detail: 'Здесь появятся список матчей, просмотр игрового поля и результаты.' },
-  { title: 'Редактор алгоритма', description: 'Преврати свою стратегию в код.', detail: 'Здесь появятся редактор кода, выбор языка и отправка алгоритма на матч.' },
-  { title: 'Команды', description: 'Объединяйся, чтобы побеждать.', detail: 'Здесь появятся создание команды, список участников и алгоритм змейки.' },
-  { title: 'Правила', description: 'Узнай, как устроено соревнование.', detail: 'Здесь появятся согласованные правила движения, столкновений и определения победителя.' },
+  {
+    title: 'Создать матч',
+    description: 'Собери команды. Задай условия. Начни игру.',
+    detail:
+      'Здесь появятся настройки поля, выбор команд и запуск соревнования.',
+  },
+  {
+    title: 'Матчи',
+    description: 'Следи за игрой алгоритмов на арене.',
+    detail:
+      'Здесь появятся список матчей, просмотр игрового поля и результаты.',
+  },
+  {
+    title: 'Редактор алгоритма',
+    description: 'Преврати свою стратегию в код.',
+    detail:
+      'Здесь появятся редактор кода, выбор языка и отправка алгоритма на матч.',
+  },
+  {
+    title: 'Команды',
+    description: 'Объединяйся, чтобы побеждать.',
+    detail:
+      'Здесь появятся создание команды, список участников и алгоритм змейки.',
+  },
+  {
+    title: 'Правила',
+    description: 'Узнай, как устроено соревнование.',
+    detail:
+      'Здесь появятся согласованные правила движения, столкновений и определения победителя.',
+  },
 ]
 
 function ArenaVisual() {
@@ -17,13 +42,35 @@ function ArenaVisual() {
       <div className="arena-plane">
         <svg viewBox="0 0 640 520" fill="none">
           <defs>
-            <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-              <path d="M 32 0 H 0 V 32" stroke="currentColor" strokeWidth="0.7" />
+            <pattern
+              id="grid"
+              width="32"
+              height="32"
+              patternUnits="userSpaceOnUse"
+            >
+              <path
+                d="M 32 0 H 0 V 32"
+                stroke="currentColor"
+                strokeWidth="0.7"
+              />
             </pattern>
           </defs>
-          <rect width="640" height="520" fill="url(#grid)" className="arena-grid" />
-          <path className="snake snake-dark" pathLength="100" d="M64 352 V224 H288 V416 H544 V352 Z" />
-          <path className="snake snake-red" pathLength="100" d="M64 416 V288 H224 V128 H416 V320 H544 V448 H224 V416 Z" />
+          <rect
+            width="640"
+            height="520"
+            fill="url(#grid)"
+            className="arena-grid"
+          />
+          <path
+            className="snake snake-dark"
+            pathLength="100"
+            d="M64 352 V224 H288 V416 H544 V352 Z"
+          />
+          <path
+            className="snake snake-red"
+            pathLength="100"
+            d="M64 416 V288 H224 V128 H416 V320 H544 V448 H224 V416 Z"
+          />
           <g className="food">
             <rect x="311" y="279" width="18" height="18" />
           </g>
@@ -34,11 +81,20 @@ function ArenaVisual() {
 }
 
 function App() {
-  const [team, setTeam] = useState<{ username: string; name: string } | null>(null)
-  const [authMode, setAuthMode] = useState<'login' | 'register' | 'required' | null>(null)
+  const [team, setTeam] = useState<{ username: string; name: string } | null>(
+    null,
+  )
+  const [authMode, setAuthMode] = useState<
+    'login' | 'register' | 'required' | null
+  >(null)
   const [sessionLoading, setSessionLoading] = useState(true)
   useEffect(() => {
-    fetch('/api/auth/me').then(async response => { if (response.ok) setTeam(await response.json()) }).catch(() => {}).finally(() => setSessionLoading(false))
+    fetch('/api/auth/me')
+      .then(async (response) => {
+        if (response.ok) setTeam(await response.json())
+      })
+      .catch(() => {})
+      .finally(() => setSessionLoading(false))
   }, [])
   const [activeSection, setActiveSection] = useState<number | null>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -47,7 +103,10 @@ function App() {
 
   function openSection(index: number) {
     if (sessionLoading) return
-    if (!team && index !== 4) { setAuthMode('required'); return }
+    if (!team && index !== 4) {
+      setAuthMode('required')
+      return
+    }
     setActiveSection(index)
     requestAnimationFrame(() => headingRef.current?.focus())
   }
@@ -56,32 +115,103 @@ function App() {
     const previous = activeSection
     setActiveSection(null)
     requestAnimationFrame(() => {
-      if (previous !== null) buttonRefs.current[previous]?.focus({ preventScroll: true })
+      if (previous !== null)
+        buttonRefs.current[previous]?.focus({ preventScroll: true })
     })
   }
 
   return (
     <div className="app-shell">
-      {authMode && <AuthDialog key={authMode} mode={authMode} onClose={() => setAuthMode(null)} onMode={setAuthMode} onSuccess={value => { setTeam(value); setAuthMode(null) }} />}
+      {authMode && (
+        <AuthDialog
+          key={authMode}
+          mode={authMode}
+          onClose={() => setAuthMode(null)}
+          onMode={setAuthMode}
+          onSuccess={(value) => {
+            setTeam(value)
+            setAuthMode(null)
+          }}
+        />
+      )}
       <header className="site-header flex items-center justify-between">
-        <a className="brand flex items-center gap-3" href="#main" onClick={(event) => {
-          event.preventDefault()
-          returnToMenu()
-          window.scrollTo(0, 0)
-        }} aria-label="Snake Arena — к главному экрану">
-          <svg width="25" height="25" viewBox="0 0 25 25" fill="none" aria-hidden="true">
-            <path d="M3 21V4H14V12H22V21H11V13" stroke="currentColor" strokeWidth="3" />
+        <a
+          className="brand flex items-center gap-3"
+          href="#main"
+          onClick={(event) => {
+            event.preventDefault()
+            returnToMenu()
+            window.scrollTo(0, 0)
+          }}
+          aria-label="Snake Arena — к главному экрану"
+        >
+          <svg
+            width="25"
+            height="25"
+            viewBox="0 0 25 25"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M3 21V4H14V12H22V21H11V13"
+              stroke="currentColor"
+              strokeWidth="3"
+            />
           </svg>
-          <span>SNAKE ARENA<span className="brand-dot text-accent">.</span></span>
+          <span>
+            SNAKE ARENA<span className="brand-dot text-accent">.</span>
+          </span>
         </a>
-        <div className="header-auth">{team ? <><span>Команда {team.name}</span><button onClick={async () => { try { const response = await fetch('/api/auth/logout', { method: 'POST' }); if (response.ok) { setTeam(null); setActiveSection(null) } } catch { /* Сессия сохраняется до успешного выхода. */ } }}>Выйти</button></> : <><button onClick={() => setAuthMode('login')}>Войти</button><button className="header-register" onClick={() => setAuthMode('register')}>Регистрация</button></>}</div>
+        <div className="header-auth">
+          {team ? (
+            <>
+              <span>Команда {team.name}</span>
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/auth/logout', {
+                      method: 'POST',
+                    })
+                    if (response.ok) {
+                      setTeam(null)
+                      setActiveSection(null)
+                    }
+                  } catch {
+                    /* Сессия сохраняется до успешного выхода. */
+                  }
+                }}
+              >
+                Выйти
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => setAuthMode('login')}>Войти</button>
+              <button
+                className="header-register"
+                onClick={() => setAuthMode('register')}
+              >
+                Регистрация
+              </button>
+            </>
+          )}
+        </div>
       </header>
 
       <main id="main" className="main-layout">
         <section className="hero" aria-labelledby="hero-title">
           <div className="hero-copy">
-            <h1 id="hero-title">SNAKE<br /><span>ARENA</span><span className="title-dot">.</span></h1>
-            <p className="hero-slogan">Твой код. Твоя стратегия.<br /><span>Твоя арена.</span></p>
+            <h1 id="hero-title">
+              SNAKE
+              <br />
+              <span>ARENA</span>
+              <span className="title-dot">.</span>
+            </h1>
+            <p className="hero-slogan">
+              Твой код. Твоя стратегия.
+              <br />
+              <span>Твоя арена.</span>
+            </p>
           </div>
           <ArenaVisual />
         </section>
@@ -90,21 +220,42 @@ function App() {
           {selected ? (
             <div className="placeholder">
               <p className="eyebrow text-accent">В РАЗРАБОТКЕ</p>
-              <h2 ref={headingRef} tabIndex={-1}>{selected.title}</h2>
+              <h2 ref={headingRef} tabIndex={-1}>
+                {selected.title}
+              </h2>
               <div className="fading-line" />
               <p className="placeholder-copy">{selected.detail}</p>
               <p className="placeholder-label">Пока это заглушка раздела.</p>
-              <button className="fill-button back-button" onClick={returnToMenu}><span>← Главное меню</span></button>
+              <button
+                className="fill-button back-button"
+                onClick={returnToMenu}
+              >
+                <span>← Главное меню</span>
+              </button>
             </div>
           ) : (
             <>
               <h2 className="panel-heading">Главное меню</h2>
               <nav aria-label="Главное меню">
                 {sections.map((section, index) => (
-                  <button key={section.title} ref={(element) => { buttonRefs.current[index] = element }} className={`menu-button fill-button ${index === 0 ? 'primary-button' : ''}`} onClick={() => openSection(index)}>
+                  <button
+                    key={section.title}
+                    ref={(element) => {
+                      buttonRefs.current[index] = element
+                    }}
+                    className={`menu-button fill-button ${index === 0 ? 'primary-button' : ''}`}
+                    onClick={() => openSection(index)}
+                  >
                     <span className="menu-number">0{index + 1}</span>
-                    <span className="menu-copy"><span className="menu-title">{section.title}</span><span className="menu-description">{section.description}</span></span>
-                    <span className="menu-arrow" aria-hidden="true">↗</span>
+                    <span className="menu-copy">
+                      <span className="menu-title">{section.title}</span>
+                      <span className="menu-description">
+                        {section.description}
+                      </span>
+                    </span>
+                    <span className="menu-arrow" aria-hidden="true">
+                      ↗
+                    </span>
                   </button>
                 ))}
               </nav>

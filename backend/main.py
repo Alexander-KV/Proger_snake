@@ -27,36 +27,40 @@ class Login(BaseModel):
 class Registration(Login):
     name: str
 
-    @field_validator('username')
+    @field_validator("username")
     @classmethod
     def valid_username(cls, value):
-        if not re.fullmatch(r'[A-Za-z0-9_]{1,15}', value):
-            raise ValueError('Некорректный username')
+        if not re.fullmatch(r"[A-Za-z0-9_]{1,15}", value):
+            raise ValueError("Некорректный username")
         return value
 
-    @field_validator('name')
+    @field_validator("name")
     @classmethod
     def valid_name(cls, value):
         value = value.strip()
-        if not re.fullmatch(r'[A-Za-zА-Яа-яЁё0-9_ ]{1,15}', value):
-            raise ValueError('Название должно содержать до 15 русских или английских букв, цифр, пробелов и знаков подчёркивания')
+        if not re.fullmatch(r"[A-Za-zА-Яа-яЁё0-9_ ]{1,15}", value):
+            raise ValueError(
+                "Название должно содержать до 15 русских или английских букв, цифр, пробелов и знаков подчёркивания"
+            )
         return value
 
-    @field_validator('password')
+    @field_validator("password")
     @classmethod
     def valid_password(cls, value):
         if len(value) < 4:
-            raise ValueError('Пароль должен содержать минимум 4 символа')
+            raise ValueError("Пароль должен содержать минимум 4 символа")
         return value
 
 
-def create_app(db_path=Path('data/snake-arena.db')):
+def create_app(db_path=Path("data/snake-arena.db")):
     db_path = Path(db_path)
     hasher = PasswordHasher()
     attempts = defaultdict(deque)
 
-    engine = create_engine(URL.create('sqlite', database=str(db_path)),
-                           connect_args={'timeout': 10, 'check_same_thread': False})
+    engine = create_engine(
+        URL.create("sqlite", database=str(db_path)),
+        connect_args={"timeout": 10, "check_same_thread": False},
+    )
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -67,20 +71,20 @@ def create_app(db_path=Path('data/snake-arena.db')):
 
     app = FastAPI(lifespan=lifespan)
 
-    @app.middleware('http')
+    @app.middleware("http")
     async def guard(request: Request, call_next):
-        if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
-            origin = request.headers.get('origin')
-            if origin and urlparse(origin).netloc != request.headers.get('host'):
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            origin = request.headers.get("origin")
+            if origin and urlparse(origin).netloc != request.headers.get("host"):
                 return Response(status_code=403)
-            if request.url.path in ('/api/auth/login', '/api/auth/register'):
-                key = request.client.host if request.client else 'unknown'
-                if key in ('127.0.0.1', '::1'):
-                    forwarded = request.headers.get('x-snake-client-ip')
+            if request.url.path in ("/api/auth/login", "/api/auth/register"):
+                key = request.client.host if request.client else "unknown"
+                if key in ("127.0.0.1", "::1"):
+                    forwarded = request.headers.get("x-snake-client-ip")
                     if forwarded:
                         try:
                             address = ip_address(forwarded)
-                            key = str(getattr(address, 'ipv4_mapped', None) or address)
+                            key = str(getattr(address, "ipv4_mapped", None) or address)
                         except ValueError:
                             pass
                 now = time.monotonic()
@@ -94,26 +98,43 @@ def create_app(db_path=Path('data/snake-arena.db')):
 
     def set_session(db: Session, team_id: int, response: Response):
         token = secrets.token_urlsafe(32)
-        db.add(AuthSession(token_hash=hashlib.sha256(token.encode()).hexdigest(), team_id=team_id,
-                           expires=time.time() + 604800))
-        response.set_cookie('session', token, max_age=604800, httponly=True, samesite='lax', secure=False, path='/')
+        db.add(
+            AuthSession(
+                token_hash=hashlib.sha256(token.encode()).hexdigest(),
+                team_id=team_id,
+                expires=time.time() + 604800,
+            )
+        )
+        response.set_cookie(
+            "session",
+            token,
+            max_age=604800,
+            httponly=True,
+            samesite="lax",
+            secure=False,
+            path="/",
+        )
 
-    @app.post('/api/auth/register', status_code=201)
+    @app.post("/api/auth/register", status_code=201)
     def register(data: Registration, response: Response):
         with Session(engine) as db:
-            team = Team(username=data.username, name=data.name, password_hash=hasher.hash(data.password))
+            team = Team(
+                username=data.username,
+                name=data.name,
+                password_hash=hasher.hash(data.password),
+            )
             db.add(team)
             try:
                 db.flush()
             except IntegrityError:
                 db.rollback()
-                raise HTTPException(409, 'Username уже занят')
+                raise HTTPException(409, "Username уже занят")
             assert team.id is not None
             set_session(db, team.id, response)
             db.commit()
-        return {'username': data.username, 'name': data.name}
+        return {"username": data.username, "name": data.name}
 
-    @app.post('/api/auth/login')
+    @app.post("/api/auth/login")
     def login(data: Login, response: Response):
         with Session(engine) as db:
             team = db.exec(select(Team).where(Team.username == data.username)).first()
@@ -122,32 +143,38 @@ def create_app(db_path=Path('data/snake-arena.db')):
             except VerifyMismatchError:
                 valid = False
             if not valid or team is None:
-                raise HTTPException(401, 'Неверный username или пароль')
+                raise HTTPException(401, "Неверный username или пароль")
             assert team.id is not None
             set_session(db, team.id, response)
             db.commit()
-            return {'username': team.username, 'name': team.name}
+            return {"username": team.username, "name": team.name}
 
-    @app.get('/api/auth/me')
+    @app.get("/api/auth/me")
     def me(request: Request):
-        token = request.cookies.get('session', '')
+        token = request.cookies.get("session", "")
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         with Session(engine) as db:
-            team = db.exec(select(Team).join(AuthSession, Team.id == AuthSession.team_id).where(
-                AuthSession.token_hash == token_hash, AuthSession.expires > time.time())).first()
+            team = db.exec(
+                select(Team)
+                .join(AuthSession, Team.id == AuthSession.team_id)
+                .where(
+                    AuthSession.token_hash == token_hash,
+                    AuthSession.expires > time.time(),
+                )
+            ).first()
             if not team:
-                raise HTTPException(401, 'Требуется вход')
-            return {'username': team.username, 'name': team.name}
+                raise HTTPException(401, "Требуется вход")
+            return {"username": team.username, "name": team.name}
 
-    @app.post('/api/auth/logout', status_code=204)
+    @app.post("/api/auth/logout", status_code=204)
     def logout(request: Request, response: Response):
-        token = request.cookies.get('session', '')
+        token = request.cookies.get("session", "")
         with Session(engine) as db:
             session = db.get(AuthSession, hashlib.sha256(token.encode()).hexdigest())
             if session:
                 db.delete(session)
                 db.commit()
-        response.delete_cookie('session', path='/')
+        response.delete_cookie("session", path="/")
 
     return app
 

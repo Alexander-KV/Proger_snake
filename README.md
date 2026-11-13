@@ -308,3 +308,10 @@ Vite перезаписывает `X-Snake-Client-IP` адресом соеди�
 от `127.0.0.1` и `::1`; локальные процессы считаются доверенными. Запускайте backend
 с `--no-proxy-headers`, чтобы Uvicorn не подменял адрес соединения из стандартных
 forwarded-заголовков. Доступ к backend остаётся локальным.
+
+### Форматирование кода
+
+Frontend: `npm run format` (Prettier), проверка — `npm run format:check`.
+Backend: `uv run --project backend --locked ruff format backend`, проверка —
+`uv run --project backend --locked ruff format --check backend`.
+Форматтеры входят в dev-зависимости; правила — в [docs/development.md](docs/development.md).

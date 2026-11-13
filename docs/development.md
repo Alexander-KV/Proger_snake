@@ -61,3 +61,15 @@
   При изменении кода обязательны `npm run lint` и `npm run build`.
 - Во frontend тестовый раннер пока не настроен. Для backend используется pytest:
   `uv run --project backend --locked python -m pytest backend/tests`.
+
+## Форматирование кода
+
+- Frontend форматируется Prettier, backend — Ruff. Форматтеры устанавливаются
+  вместе с dev-зависимостями через `npm ci` и `uv sync --project backend --locked`.
+- Из корня проекта: `npm run format` исправляет форматирование frontend,
+  `npm run format:check` проверяет его без изменений. Команды охватывают `src/`
+  и конфигурационные файлы frontend; документация не форматируется.
+- Для backend: `uv run --project backend --locked ruff format backend`;
+  проверка без изменений: `uv run --project backend --locked ruff format --check backend`.
+- Перед завершением изменений кода выполнять проверку форматирования затронутой части.
+  Форматирование не заменяет ESLint, сборку и проверки поведения.

@@ -22,6 +22,10 @@ React, TypeScript, Vite. Общие инструменты: Node.js, npm, ESLint
 - `npm run build` — проверка TypeScript (`tsc -b`) и сборка в dist/.
 - `npm run preview` — просмотр готовой сборки; после изменений нужна повторная сборка.
 - `npm run lint` — ESLint.
+- `npm run format` — форматирование frontend через Prettier.
+- `npm run format:check` — проверка форматирования frontend без изменений.
+- `uv run --project backend --locked ruff format backend` — форматирование backend через Ruff.
+- `uv run --project backend --locked ruff format --check backend` — проверка форматирования backend без изменений.
 
 Перед завершением изменений кода выполнять `npm run lint` и `npm run build`.
 
@@ -71,6 +75,9 @@ React, TypeScript, Vite. Общие инструменты: Node.js, npm, ESLint
   При необходимости тело объясняет причину, строки ≈ 72 символа.
 - Не коммитить секреты и локальное окружение. Новые переменные документировать в README.md.
 - Каждый коммит должен проходить обязательные проверки; хуки не обходить.
+- Перед каждым коммитом форматировать код frontend и backend из корня проекта:
+  `npm run format` и `uv run --project backend --locked ruff format backend`.
+  Обязательные проверки выполнять после форматирования.
 
 ## Документация по задаче
 
@@ -86,4 +93,4 @@ React, TypeScript, Vite. Общие инструменты: Node.js, npm, ESLint
 - [docs/development.md](docs/development.md) — подробные правила написания кода, требования к разработке; читать перед
   средними-крупными изменениями в проекте.
 
-При изменении состояния реализации обновлять docs/current-state.md в том же изменении.
+При изменении состояния реализации обновлять соответствующие файлы из `docs/` в том же изменении.

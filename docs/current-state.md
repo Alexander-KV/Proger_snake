@@ -15,7 +15,7 @@
 
 ## Инструменты
 
-Зависимости backend управляются через uv и `backend/pyproject.toml`, версии зафиксированы в `backend/uv.lock`. Для backend настроены тесты pytest; проверка форматирования пока не настроена.
+Зависимости backend управляются через uv и `backend/pyproject.toml`, версии зафиксированы в `backend/uv.lock`. Для backend настроены тесты pytest; форматирование и его проверка настроены через Ruff. Для frontend используется Prettier.
 
 ## Требования
 
