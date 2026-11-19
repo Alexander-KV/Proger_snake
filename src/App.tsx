@@ -16,12 +16,6 @@ const sections = [
       'Здесь появятся список матчей, просмотр игрового поля и результаты.',
   },
   {
-    title: 'Редактор алгоритма',
-    description: 'Преврати свою стратегию в код.',
-    detail:
-      'Здесь появятся редактор кода, выбор языка и отправка алгоритма на матч.',
-  },
-  {
     title: 'Команды',
     description: 'Объединяйся, чтобы побеждать.',
     detail:
@@ -29,6 +23,7 @@ const sections = [
   },
   {
     title: 'Правила',
+    public: true,
     description: 'Узнай, как устроено соревнование.',
     detail:
       'Здесь появятся согласованные правила движения, столкновений и определения победителя.',
@@ -103,7 +98,7 @@ function App() {
 
   function openSection(index: number) {
     if (sessionLoading) return
-    if (!team && index !== 4) {
+    if (!team && !sections[index].public) {
       setAuthMode('required')
       return
     }
