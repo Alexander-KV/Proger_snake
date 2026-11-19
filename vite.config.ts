@@ -9,6 +9,7 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: false,
+        ws: true,
         configure(proxy) {
           proxy.on('proxyReq', (proxyRequest, request) => {
             proxyRequest.removeHeader('X-Snake-Client-IP')

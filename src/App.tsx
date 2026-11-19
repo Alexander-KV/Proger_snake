@@ -1,19 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import AuthDialog from './AuthDialog'
+import MatchScreen from './matches/MatchScreen'
+import {
+  getMatchRoute,
+  openMatchRoute,
+  watchMatchRoute,
+} from './matches/routes'
 import './App.css'
 
 const sections = [
   {
     title: 'Создать матч',
-    description: 'Собери команды. Задай условия. Начни игру.',
-    detail:
-      'Здесь появятся настройки поля, выбор команд и запуск соревнования.',
+    description: 'Задай условия и собери команды.',
   },
   {
     title: 'Матчи',
-    description: 'Следи за игрой алгоритмов на арене.',
-    detail:
-      'Здесь появятся список матчей, просмотр игрового поля и результаты.',
+    description: 'Найди матч и присоединяйся.',
   },
   {
     title: 'Команды',
@@ -83,6 +85,7 @@ function App() {
     'login' | 'register' | 'required' | null
   >(null)
   const [sessionLoading, setSessionLoading] = useState(true)
+  const matchRoute = useSyncExternalStore(watchMatchRoute, getMatchRoute)
   useEffect(() => {
     fetch('/api/auth/me')
       .then(async (response) => {
@@ -100,6 +103,11 @@ function App() {
     if (sessionLoading) return
     if (!team && !sections[index].public) {
       setAuthMode('required')
+      return
+    }
+    if (index === 0 || index === 1) {
+      setActiveSection(null)
+      openMatchRoute(index === 0 ? 'new' : 'list')
       return
     }
     setActiveSection(index)
@@ -122,6 +130,7 @@ function App() {
       }
       logoutDialog.current?.close()
       setTeam(null)
+      openMatchRoute(null)
       setActiveSection(null)
       requestAnimationFrame(() => loginButton.current?.focus())
     } catch {
@@ -132,7 +141,9 @@ function App() {
   }
 
   function returnToMenu() {
-    const previous = activeSection
+    const previous =
+      matchRoute === 'new' ? 0 : matchRoute !== null ? 1 : activeSection
+    openMatchRoute(null)
     setActiveSection(null)
     requestAnimationFrame(() => {
       if (previous !== null)
@@ -243,71 +254,100 @@ function App() {
         </div>
       </dialog>
 
-      <main id="main" className="main-layout">
-        <section className="hero" aria-labelledby="hero-title">
-          <div className="hero-copy">
-            <h1 id="hero-title">
-              SNAKE
-              <br />
-              <span>ARENA</span>
-              <span className="title-dot">.</span>
-            </h1>
-            <p className="hero-slogan">
-              Твой код. Твоя стратегия.
-              <br />
-              <span>Твоя арена.</span>
+      {matchRoute !== null ? (
+        team ? (
+          <MatchScreen
+            route={matchRoute}
+            onExpired={() => {
+              setTeam(null)
+              setAuthMode('login')
+            }}
+            onMenu={returnToMenu}
+          />
+        ) : (
+          <main className="match-screen" id="main">
+            <p role="status">
+              {sessionLoading
+                ? 'Проверяем сессию…'
+                : 'Войдите, чтобы открыть матчи.'}
             </p>
-          </div>
-          <ArenaVisual />
-        </section>
-
-        <section className="control-panel" aria-label="Управление ареной">
-          {selected ? (
-            <div className="placeholder">
-              <p className="eyebrow text-accent">В РАЗРАБОТКЕ</p>
-              <h2 ref={headingRef} tabIndex={-1}>
-                {selected.title}
-              </h2>
-              <div className="fading-line" />
-              <p className="placeholder-copy">{selected.detail}</p>
-              <p className="placeholder-label">Пока это заглушка раздела.</p>
+            {!sessionLoading && (
               <button
-                className="fill-button back-button"
-                onClick={returnToMenu}
+                className="match-button is-primary"
+                onClick={() => setAuthMode('required')}
               >
-                <span>← Главное меню</span>
+                Войти или зарегистрироваться
               </button>
+            )}
+          </main>
+        )
+      ) : (
+        <main id="main" className="main-layout">
+          <section className="hero" aria-labelledby="hero-title">
+            <div className="hero-copy">
+              <h1 id="hero-title">
+                SNAKE
+                <br />
+                <span>ARENA</span>
+                <span className="title-dot">.</span>
+              </h1>
+              <p className="hero-slogan">
+                Твой код. Твоя стратегия.
+                <br />
+                <span>Твоя арена.</span>
+              </p>
             </div>
-          ) : (
-            <>
-              <h2 className="panel-heading">Главное меню</h2>
-              <nav aria-label="Главное меню">
-                {sections.map((section, index) => (
-                  <button
-                    key={section.title}
-                    ref={(element) => {
-                      buttonRefs.current[index] = element
-                    }}
-                    className={`menu-button fill-button ${index === 0 ? 'primary-button' : ''}`}
-                    onClick={() => openSection(index)}
-                  >
-                    <span className="menu-number">0{index + 1}</span>
-                    <span className="menu-copy">
-                      <span className="menu-title">{section.title}</span>
-                      <span className="menu-description">
-                        {section.description}
+            <ArenaVisual />
+          </section>
+
+          <section className="control-panel" aria-label="Управление ареной">
+            {selected ? (
+              <div className="placeholder">
+                <p className="eyebrow text-accent">В РАЗРАБОТКЕ</p>
+                <h2 ref={headingRef} tabIndex={-1}>
+                  {selected.title}
+                </h2>
+                <div className="fading-line" />
+                <p className="placeholder-copy">{selected.detail}</p>
+                <p className="placeholder-label">Пока это заглушка раздела.</p>
+                <button
+                  className="fill-button back-button"
+                  onClick={returnToMenu}
+                >
+                  <span>← Главное меню</span>
+                </button>
+              </div>
+            ) : (
+              <>
+                <h2 className="panel-heading">Главное меню</h2>
+                <nav aria-label="Главное меню">
+                  {sections.map((section, index) => (
+                    <button
+                      key={section.title}
+                      ref={(element) => {
+                        buttonRefs.current[index] = element
+                      }}
+                      className={`menu-button fill-button ${index === 0 ? 'primary-button' : ''}`}
+                      onClick={() => openSection(index)}
+                    >
+                      <span className="menu-number">0{index + 1}</span>
+                      <span className="menu-copy">
+                        <span className="menu-title">{section.title}</span>
+                        <span className="menu-description">
+                          {section.description}
+                        </span>
                       </span>
-                    </span>
-                    <span className="menu-arrow" aria-hidden="true">
-                      ↗
-                    </span>
-                  </button>
-                ))}
-              </nav>
-            </>
-          )}
-        </section>
-      </main>
+                      <span className="menu-arrow" aria-hidden="true">
+                        ↗
+                      </span>
+                    </button>
+                  ))}
+                </nav>
+              </>
+            )}
+          </section>
+        </main>
+      )}
     </div>
   )
 }
