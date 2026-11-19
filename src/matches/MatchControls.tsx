@@ -6,18 +6,20 @@ export default function MatchControls({
   disabled,
   onStart,
   onCancelCountdown,
+  onCancelPreparation,
   onCancelMatch,
 }: {
   data: MatchLobbyData
   disabled: boolean
-  onStart: (seconds: number) => void
+  onStart: (minutes: number) => void
   onCancelCountdown: () => void
+  onCancelPreparation: () => void
   onCancelMatch: () => void
 }) {
-  const [seconds, setSeconds] = useState('0')
+  const [minutes, setMinutes] = useState('10')
   const enoughPlayers = data.participant_count >= data.minimum_players
-  const validCountdown =
-    seconds !== '' && /^\d+$/.test(seconds) && Number(seconds) <= 60
+  const validDuration =
+    /^\d+$/.test(minutes) && Number(minutes) >= 1 && Number(minutes) <= 120
 
   return (
     <section className="match-controls" aria-labelledby="match-controls-title">
@@ -26,36 +28,45 @@ export default function MatchControls({
         <form
           onSubmit={(event) => {
             event.preventDefault()
-            if (!disabled && enoughPlayers && validCountdown)
-              onStart(Number(seconds))
+            if (!disabled && enoughPlayers && validDuration)
+              onStart(Number(minutes))
           }}
         >
-          <label htmlFor="match-countdown-seconds">
-            Отсчёт до старта, сек.
+          <label htmlFor="match-preparation-minutes">
+            Время на написание, мин.
           </label>
           <input
-            id="match-countdown-seconds"
+            id="match-preparation-minutes"
             type="number"
-            min={0}
-            max={60}
+            min={1}
+            max={120}
             step={1}
             required
-            value={seconds}
-            onChange={(event) => setSeconds(event.target.value)}
+            value={minutes}
+            onChange={(event) => setMinutes(event.target.value)}
             aria-describedby="match-start-hint"
           />
           <p id="match-start-hint" className="match-muted">
             {enoughPlayers
-              ? '0 — начать сразу.'
+              ? 'После подготовки матч начнётся автоматически.'
               : `Для старта нужны минимум ${data.minimum_players} команды.`}
           </p>
           <button
             className="match-button is-primary"
-            disabled={disabled || !enoughPlayers || !validCountdown}
+            disabled={disabled || !enoughPlayers || !validDuration}
           >
-            Начать матч
+            Начать подготовку
           </button>
         </form>
+      )}
+      {data.status === 'preparing' && (
+        <button
+          className="match-button"
+          disabled={disabled}
+          onClick={onCancelPreparation}
+        >
+          Остановить подготовку
+        </button>
       )}
       {data.status === 'countdown' && (
         <button

@@ -114,7 +114,9 @@ export default function MatchList({
                         {!waiting
                           ? match.status === 'countdown'
                             ? 'Отсчёт до старта'
-                            : 'Идёт игра'
+                            : match.status === 'preparing'
+                              ? 'Подготовка алгоритмов'
+                              : 'Идёт игра'
                           : full
                             ? 'Заполнен'
                             : 'Ожидает команды'}

@@ -42,7 +42,7 @@ export default function MatchArena({ data }: { data: MatchLobbyData }) {
     <section className="match-field" aria-labelledby="match-field-title">
       <div className="match-field-caption">
         <h2 id="match-field-title" tabIndex={-1}>
-          {data.status === 'waiting' ? 'Тренировочное поле' : 'Игровое поле'}
+          {data.status === 'waiting' ? 'Размер поля' : 'Игровое поле'}
         </h2>
         <span>
           {data.board_size} × {data.board_size}

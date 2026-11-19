@@ -1,9 +1,14 @@
-import { useRef, useState } from 'react'
+import { lazy, Suspense, useRef, useState } from 'react'
+import { ArenaBoard, ArenaResults } from '../training/ArenaBoard'
 import MatchArena, { MatchScores } from './MatchArena'
 import MatchControls from './MatchControls'
 import MatchGuide from './MatchGuide'
+import PreparationClock from './PreparationClock'
 import { MatchError, MatchSocket } from './socket'
 import useMatchSubscription from './useMatchSubscription'
+import '../training/training.css'
+
+const AlgorithmWorkspace = lazy(() => import('../training/AlgorithmWorkspace'))
 
 export default function MatchLobby({
   socket,
@@ -42,7 +47,12 @@ export default function MatchLobby({
   }
 
   async function act(
-    action: 'close_match' | 'leave_match' | 'start_match' | 'cancel_countdown',
+    action:
+      | 'close_match'
+      | 'leave_match'
+      | 'start_preparation'
+      | 'cancel_preparation'
+      | 'cancel_countdown',
     payload: object = {},
   ) {
     setBusy(true)
@@ -92,8 +102,26 @@ export default function MatchLobby({
   const finished = data.status === 'finished'
   const waiting = data.status === 'waiting'
   return (
-    <div className="match-lobby">
-      <MatchArena data={data} />
+    <div
+      className={`match-lobby${data.status === 'preparing' ? ' is-preparing' : ''}`}
+    >
+      {data.preparation_ends_at !== null ? (
+        <PreparationClock
+          key={data.preparation_ends_at}
+          endsAt={data.preparation_ends_at}
+          serverTime={data.server_time}
+        />
+      ) : data.arena ? (
+        <ArenaBoard arena={data.arena} />
+      ) : (
+        <MatchArena data={data} />
+      )}
+
+      {data.status === 'preparing' && data.my_role !== 'organizer_observer' && (
+        <Suspense fallback={<p role="status">Загружаем редактор…</p>}>
+          <AlgorithmWorkspace data={data} socket={socket} online={online} />
+        </Suspense>
+      )}
 
       <section className="match-roster" aria-labelledby="match-roster-title">
         <div className="match-roster-heading">
@@ -103,7 +131,47 @@ export default function MatchLobby({
           </span>
         </div>
         <p className="match-muted">Организатор · {data.organizer.name}</p>
-        {data.game ? (
+        {data.arena ? (
+          <>
+            <ArenaResults
+              arena={data.arena}
+              versionNames={data.version_names}
+            />
+            {data.runner_waiting && (
+              <p className="match-error" role="status">
+                Исполнитель Python недоступен. Матч продолжится после
+                восстановления.
+              </p>
+            )}
+            {data.finish_reason === 'not_enough_algorithms' && (
+              <p className="match-muted">
+                Для матча нужны алгоритмы хотя бы двух команд.
+              </p>
+            )}
+            {data.skipped.length > 0 && (
+              <ul
+                className="match-team-list"
+                aria-label="Команды без алгоритма"
+              >
+                {data.skipped.map((team) => (
+                  <li key={team.id}>
+                    <span>{team.name}</span>
+                    <span>Алгоритм не отправлен</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {data.algorithm_error && (
+              <p className="match-error" role="alert">
+                Такт {data.algorithm_error.tick}
+                {data.algorithm_error.line
+                  ? ` · строка ${data.algorithm_error.line}`
+                  : ''}{' '}
+                · {data.algorithm_error.message}
+              </p>
+            )}
+          </>
+        ) : data.game ? (
           <MatchScores
             game={data.game}
             finished={finished}
@@ -159,9 +227,10 @@ export default function MatchLobby({
           <MatchControls
             data={data}
             disabled={busy || !online}
-            onStart={(seconds) =>
-              void act('start_match', { countdown_seconds: seconds })
+            onStart={(minutes) =>
+              void act('start_preparation', { preparation_minutes: minutes })
             }
+            onCancelPreparation={() => void act('cancel_preparation')}
             onCancelCountdown={() => void act('cancel_countdown')}
             onCancelMatch={() => {
               setActionError('')

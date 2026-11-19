@@ -1,13 +1,17 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from threading import Barrier
+from time import time
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import Session, create_engine
 from starlette.websockets import WebSocketDisconnect
 
+from backend import game
 from backend.main import create_app
+from backend.models import Match, MatchRound
 
 ORIGIN = {"origin": "http://testserver"}
 
@@ -219,7 +223,7 @@ def test_invalid_command_preserves_subscription(server):
         assert socket.receive_json()["payload"]["current_match_id"] == match_id
 
 
-def test_organizer_starts_with_two_players_and_can_cancel_countdown(server):
+def test_organizer_starts_with_two_players_and_can_cancel_preparation(server):
     host, player, other = [
         register(server, name) for name in ("Host", "Player", "Other")
     ]
@@ -230,64 +234,51 @@ def test_organizer_starts_with_two_players_and_can_cancel_countdown(server):
     ):
         match = create(a, "organizer_player", capacity=4)["payload"]["id"]
         target = {"match_id": match}
-        start = target | {"countdown_seconds": 30}
-        assert send(a, "start_match", start)["code"] == "not_enough_players"
+        start = target | {"preparation_minutes": 1}
+        assert send(a, "start_preparation", start)["code"] == "not_enough_players"
         assert send(b, "join_match", target)["type"] == "result"
-        assert send(b, "start_match", start)["code"] == "forbidden"
+        assert send(b, "start_preparation", start)["code"] == "forbidden"
         assert subscribe(a, "lobby", **target)["minimum_players"] == 2
         assert subscribe(b, "lobby", **target)["status"] == "waiting"
 
-        assert send(a, "start_match", start)["type"] == "result"
+        assert send(a, "start_preparation", start)["type"] == "result"
         countdown = b.receive_json()["payload"]
-        assert countdown["status"] == "countdown"
-        assert countdown["starts_at"] > countdown["server_time"]
+        assert countdown["status"] == "preparing"
+        assert countdown["preparation_ends_at"] > countdown["server_time"]
         assert send(c, "join_match", target)["code"] == "match_not_waiting"
         assert send(b, "leave_match", target)["code"] == "match_not_waiting"
-        assert send(b, "cancel_countdown", target)["code"] == "forbidden"
+        assert send(b, "cancel_preparation", target)["code"] == "forbidden"
 
-        assert send(a, "cancel_countdown", target)["type"] == "result"
+        assert send(a, "cancel_preparation", target)["type"] == "result"
         reopened = b.receive_json()["payload"]
         assert reopened["status"] == "waiting"
-        assert reopened["starts_at"] is None
+        assert reopened["preparation_ends_at"] is None
         assert send(c, "join_match", target)["type"] == "result"
-        assert send(a, "start_match", start)["type"] == "result"
+        assert send(a, "start_preparation", start)["type"] == "result"
         assert send(a, "close_match", target)["type"] == "result"
         assert subscribe(b, "list") == {"matches": [], "current_match_id": None}
 
 
-def test_observer_starts_round_and_teams_receive_finish(server, monkeypatch):
-    monkeypatch.setattr("backend.game.TICK_SECONDS", 0.01, raising=False)
-    host, player, other = [
-        register(server, name) for name in ("Host", "Player", "Other")
-    ]
-    with (
-        server.websocket_connect("/api/ws", headers=host) as a,
-        server.websocket_connect("/api/ws", headers=player) as b,
-        server.websocket_connect("/api/ws", headers=other) as c,
-    ):
-        match = create(a, capacity=3)["payload"]["id"]
-        target = {"match_id": match}
-        assert send(b, "join_match", target)["type"] == "result"
-        start = target | {"countdown_seconds": 0}
-        assert send(a, "start_match", start)["code"] == "not_enough_players"
-        assert send(c, "join_match", target)["type"] == "result"
-        assert subscribe(b, "lobby", **target)["status"] == "waiting"
-        assert send(a, "start_match", start)["type"] == "result"
-        first = b.receive_json()["payload"]
-        assert first["status"] == "running"
-        assert len(first["game"]["snakes"]) == 2
-        last = first
-        for _ in range(301):
-            last = b.receive_json()["payload"]
-            if last["status"] == "finished":
-                break
-        assert last["status"] == "finished"
-        assert last["game"]["tick"] > first["game"]["tick"]
-        assert subscribe(b, "list")["current_match_id"] is None
-        assert subscribe(b, "lobby", **target)["status"] == "finished"
+def seed_legacy_round(path, match_id, status, delay=0):
+    with Session(create_engine(f"sqlite:///{path}")) as db:
+        match = db.get_one(Match, match_id)
+        match.status = status
+        db.add(
+            MatchRound(
+                match_id=match_id,
+                next_at=time() + delay,
+                game=game.new_game(
+                    match.board_size, [(1, "Host"), (2, "Guest")], match_id
+                ),
+            )
+        )
+        db.commit()
 
 
-def test_pending_countdown_resumes_after_restart(tmp_path):
+@pytest.mark.parametrize("status", ["running", "countdown"])
+def test_legacy_round_resumes_and_finishes_after_restart(tmp_path, monkeypatch, status):
+    monkeypatch.setattr("backend.game.TICK_SECONDS", 0.01)
+    monkeypatch.setattr("backend.game.MAX_TICKS", 3)
     path = tmp_path / "restart.db"
     with TestClient(create_app(path)) as client:
         host = register(client, "Host")
@@ -299,11 +290,8 @@ def test_pending_countdown_resumes_after_restart(tmp_path):
             match = create(a, "organizer_player")["payload"]["id"]
             target = {"match_id": match}
             assert send(b, "join_match", target)["type"] == "result"
-            assert (
-                send(a, "start_match", target | {"countdown_seconds": 2})["type"]
-                == "result"
-            )
 
+    seed_legacy_round(path, match, status, delay=0.1)
     with (
         TestClient(create_app(path)) as client,
         client.websocket_connect("/api/ws", headers=guest) as b,
@@ -311,8 +299,12 @@ def test_pending_countdown_resumes_after_restart(tmp_path):
         current = subscribe(b, "lobby", **target)
         if current["status"] == "countdown":
             current = b.receive_json()["payload"]
-        assert current["status"] == "running"
+        while current["status"] != "finished":
+            current = b.receive_json()["payload"]
+        assert 0 < current["game"]["tick"] <= 3
         assert [snake["name"] for snake in current["game"]["snakes"]] == [
             "Host",
             "Guest",
         ]
+        assert subscribe(b, "list")["current_match_id"] is None
+        assert subscribe(b, "lobby", **target)["status"] == "finished"

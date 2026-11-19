@@ -1,7 +1,10 @@
+import type { AlgorithmIssue, Arena } from '../training/api'
+
 export type OrganizerRole = 'organizer_observer' | 'organizer_player'
 export type MatchRole = OrganizerRole | 'participant'
 
-type MatchStatus = 'waiting' | 'countdown' | 'running' | 'finished'
+type MatchStatus =
+  'waiting' | 'preparing' | 'countdown' | 'running' | 'finished'
 
 export type MatchSummary = {
   id: number
@@ -33,10 +36,27 @@ export type GameState = {
   winners: number[]
 }
 
+export type AlgorithmVersion = {
+  id: number
+  name: string
+  source: string
+  selected: boolean
+  submitted_at: number
+}
+
 export type MatchLobbyData = MatchSummary & {
   organizer: TeamLabel
   participants: TeamLabel[]
   my_role: MatchRole
+  my_team_id: number
+  preparation_ends_at: number | null
+  versions: AlgorithmVersion[]
+  arena: Arena | null
+  skipped: TeamLabel[]
+  finish_reason: 'not_enough_algorithms' | null
+  version_names: Record<number, string>
+  algorithm_error: AlgorithmIssue | null
+  runner_waiting: boolean
   minimum_players: number
   starts_at: number | null
   server_time: number

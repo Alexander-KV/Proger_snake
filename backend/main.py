@@ -18,6 +18,8 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from backend.auth import find_session, session_key
 from backend.match_socket import MatchSocket
 from backend.models import AuthSession, Team
+from backend.training.api import make_router
+from backend.training.executor import Executor
 
 
 class Login(BaseModel):
@@ -53,7 +55,7 @@ class Registration(Login):
         return value
 
 
-def create_app(db_path=Path("data/snake-arena.db")):
+def create_app(db_path=Path("data/snake-arena.db"), *, executor=None):
     db_path = Path(db_path)
     hasher = PasswordHasher()
     attempts = defaultdict(deque)
@@ -75,7 +77,9 @@ def create_app(db_path=Path("data/snake-arena.db")):
             engine.dispose()
 
     app = FastAPI(lifespan=lifespan)
-    matches = MatchSocket(engine)
+    executor = executor if executor is not None else Executor()
+    matches = MatchSocket(engine, executor)
+    app.include_router(make_router(engine, executor))
     app.include_router(matches.router)
 
     @app.middleware("http")

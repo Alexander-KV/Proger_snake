@@ -49,3 +49,44 @@ class MatchRound(SQLModel, table=True):
     match_id: int = Field(primary_key=True, foreign_key="matches.id")
     next_at: float = Field(sa_type=Float)
     game: dict = Field(sa_column=Column(JSON, nullable=False))
+
+
+class TrainingMap(SQLModel, table=True):
+    __tablename__ = "training_maps"
+
+    id: int | None = Field(default=None, primary_key=True)
+    team_id: int = Field(foreign_key="teams.id", index=True)
+    name: str
+    data: dict = Field(sa_column=Column(JSON, nullable=False))
+
+
+class MatchPreparation(SQLModel, table=True):
+    __tablename__ = "match_preparations"
+
+    match_id: int = Field(primary_key=True, foreign_key="matches.id")
+    participants: list = Field(sa_column=Column(JSON, nullable=False))
+
+
+class AlgorithmVersion(SQLModel, table=True):
+    __tablename__ = "algorithm_versions"
+    __table_args__ = (
+        UniqueConstraint("match_id", "team_id", "number"),
+        UniqueConstraint("match_id", "team_id", "request_id"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    match_id: int = Field(foreign_key="matches.id")
+    team_id: int = Field(foreign_key="teams.id")
+    number: int
+    name: str
+    source: str
+    submitted_at: float = Field(sa_type=Float)
+    request_id: str
+
+
+class AlgorithmSelection(SQLModel, table=True):
+    __tablename__ = "algorithm_selections"
+
+    match_id: int = Field(primary_key=True, foreign_key="matches.id")
+    team_id: int = Field(primary_key=True, foreign_key="teams.id")
+    version_id: int = Field(foreign_key="algorithm_versions.id")

@@ -21,14 +21,14 @@ const sections = [
     title: 'Команды',
     description: 'Объединяйся, чтобы побеждать.',
     detail:
-      'Здесь появятся создание команды, список участников и алгоритм змейки.',
+      'Ваша учётная запись представляет команду. Редактор алгоритма открывается в лобби во время подготовки.',
   },
   {
     title: 'Правила',
     public: true,
     description: 'Узнай, как устроено соревнование.',
     detail:
-      'Здесь появятся согласованные правила движения, столкновений и определения победителя.',
+      'Ваша змейка получает направление от Python-алгоритма. Все змейки двигаются одновременно, собирают еду и избегают столкновений.',
   },
 ]
 
@@ -303,13 +303,19 @@ function App() {
           <section className="control-panel" aria-label="Управление ареной">
             {selected ? (
               <div className="placeholder">
-                <p className="eyebrow text-accent">В РАЗРАБОТКЕ</p>
                 <h2 ref={headingRef} tabIndex={-1}>
                   {selected.title}
                 </h2>
                 <div className="fading-line" />
                 <p className="placeholder-copy">{selected.detail}</p>
-                <p className="placeholder-label">Пока это заглушка раздела.</p>
+                {selected.public && (
+                  <p className="placeholder-copy">
+                    Обычная еда даёт 10 очков, золотая — 30. Вода замедляет
+                    движение, яд уменьшает длину, а щит защищает от обоих
+                    эффектов. Выигрывает единственная выжившая змейка, а по
+                    лимиту тактов — выжившая команда с наибольшим счётом.
+                  </p>
+                )}
                 <button
                   className="fill-button back-button"
                   onClick={returnToMenu}
