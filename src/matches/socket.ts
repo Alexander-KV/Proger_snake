@@ -1,12 +1,14 @@
 export type OrganizerRole = 'organizer_observer' | 'organizer_player'
 export type MatchRole = OrganizerRole | 'participant'
 
+type MatchStatus = 'waiting' | 'countdown' | 'running' | 'finished'
+
 export type MatchSummary = {
   id: number
   capacity: number
   board_size: number
   participant_count: number
-  status: string
+  status: MatchStatus
 }
 
 export type MatchListData = {
@@ -16,10 +18,29 @@ export type MatchListData = {
 
 type TeamLabel = { id: number; name: string }
 
+export type Cell = [number, number]
+
+export type GameState = {
+  tick: number
+  food: Cell | null
+  snakes: {
+    team_id: number
+    name: string
+    body: Cell[]
+    alive: boolean
+    score: number
+  }[]
+  winners: number[]
+}
+
 export type MatchLobbyData = MatchSummary & {
   organizer: TeamLabel
   participants: TeamLabel[]
   my_role: MatchRole
+  minimum_players: number
+  starts_at: number | null
+  server_time: number
+  game: GameState | null
 }
 
 export type CreateMatchInput = {

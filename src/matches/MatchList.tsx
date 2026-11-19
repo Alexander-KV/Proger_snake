@@ -26,7 +26,11 @@ export default function MatchList({
     } catch (failure) {
       if (failure instanceof MatchError) {
         setActionError(failure)
-        if (failure.code === 'match_full' || failure.code === 'active_match')
+        if (
+          ['match_full', 'active_match', 'match_not_waiting'].includes(
+            failure.code,
+          )
+        )
           retry()
       }
     } finally {
@@ -108,7 +112,9 @@ export default function MatchList({
                       </td>
                       <td>
                         {!waiting
-                          ? 'Идёт игра'
+                          ? match.status === 'countdown'
+                            ? 'Отсчёт до старта'
+                            : 'Идёт игра'
                           : full
                             ? 'Заполнен'
                             : 'Ожидает команды'}
@@ -119,7 +125,7 @@ export default function MatchList({
                             className="match-link"
                             onClick={() => onOpen(match.id)}
                           >
-                            Открыть лобби
+                            {waiting ? 'Открыть лобби' : 'Открыть матч'}
                           </button>
                         ) : waiting && !full && !hasCurrentMatch ? (
                           <button

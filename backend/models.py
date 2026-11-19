@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Float, Integer, Text, UniqueConstraint
+from sqlalchemy import JSON, Column, Float, Integer, Text, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -41,3 +41,11 @@ class MatchMembership(SQLModel, table=True):
     team_id: int = Field(primary_key=True, foreign_key="teams.id")
     match_id: int = Field(foreign_key="matches.id", index=True)
     role: str
+
+
+class MatchRound(SQLModel, table=True):
+    __tablename__ = "match_rounds"
+
+    match_id: int = Field(primary_key=True, foreign_key="matches.id")
+    next_at: float = Field(sa_type=Float)
+    game: dict = Field(sa_column=Column(JSON, nullable=False))

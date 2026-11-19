@@ -13,7 +13,14 @@ from sqlmodel import Session
 from starlette.concurrency import run_in_threadpool
 
 from backend.auth import find_session, session_key
-from backend.matches import MatchError, Subscription, mutate, snapshot
+from backend.matches import (
+    MatchError,
+    Subscription,
+    active_rounds,
+    advance_round,
+    mutate,
+    snapshot,
+)
 
 
 class Message(BaseModel):
@@ -24,6 +31,8 @@ class Message(BaseModel):
         "join_match",
         "leave_match",
         "close_match",
+        "start_match",
+        "cancel_countdown",
     ]
     request_id: str = Field(pattern=r"^[a-fA-F0-9]{32}$")
     payload: dict
@@ -63,6 +72,54 @@ class MatchSocket:
         self.router.add_api_websocket_route("/api/ws", self.connect)
         self.peers: set[Peer] = set()
         self.lock = asyncio.Lock()
+        self.rounds: dict[int, asyncio.Task] = {}
+
+    def load_rounds(self):
+        with Session(self.engine) as db:
+            return active_rounds(db)
+
+    async def resume_rounds(self):
+        for match_id, next_at in await run_in_threadpool(self.load_rounds):
+            self.schedule(match_id, next_at)
+
+    async def stop_rounds(self):
+        async with self.lock:
+            tasks = list(self.rounds.values())
+            for task in tasks:
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    def schedule(self, match_id: int, next_at: float | None = None):
+        previous = self.rounds.pop(match_id, None)
+        if previous is not None:
+            previous.cancel()
+        if next_at is not None:
+            self.rounds[match_id] = asyncio.create_task(
+                self.run_round(match_id, next_at)
+            )
+
+    def tick(self, match_id: int):
+        with Session(self.engine) as db:
+            return advance_round(db, match_id)
+
+    async def run_round(self, match_id: int, next_at: float):
+        try:
+            while next_at is not None:
+                await asyncio.sleep(max(0, next_at - time()))
+                async with self.lock:
+                    try:
+                        deadline, changed, status_changed = await run_in_threadpool(
+                            self.tick, match_id
+                        )
+                    except OperationalError:
+                        next_at = time() + 1
+                        continue
+                    if changed:
+                        await self.publish(match_id, include_list=status_changed)
+                    next_at = deadline
+        finally:
+            if self.rounds.get(match_id) is asyncio.current_task():
+                del self.rounds[match_id]
 
     def identify(self, key: str) -> Peer | None:
         with Session(self.engine) as db:
@@ -166,9 +223,9 @@ class MatchSocket:
                 return None
             if message.type == "subscribe":
                 view = Subscription.model_validate(message.payload)
-                return snapshot(db, peer.team_id, view), view
+                return snapshot(db, peer.team_id, view), view, None
             if message.type == "unsubscribe":
-                return {}, None
+                return {}, None, None
             return mutate(
                 db, peer.team_id, message.type, message.payload, message.request_id
             )
@@ -205,7 +262,7 @@ class MatchSocket:
             peer.close(1008)
             return
 
-        value, detail = outcome
+        value, detail, next_at = outcome
         if message.type in ("subscribe", "unsubscribe"):
             peer.view = detail
             peer.subscription_id = message.request_id if detail else None
@@ -230,6 +287,8 @@ class MatchSocket:
             }
         )
         if detail:
+            if message.type in ("start_match", "cancel_countdown", "close_match"):
+                self.schedule(value, next_at)
             await self.publish(value)
 
     def collect(self, peers: list[Peer]):
@@ -265,13 +324,16 @@ class MatchSocket:
                     )
         return messages
 
-    async def publish(self, match_id: int):
+    async def publish(self, match_id: int, *, include_list: bool = True):
         targets = [
             peer
             for peer in self.peers
             if not peer.closing
             and peer.view is not None
-            and (peer.view.view == "list" or peer.view.match_id == match_id)
+            and (
+                (include_list and peer.view.view == "list")
+                or peer.view.match_id == match_id
+            )
         ]
         try:
             messages = await run_in_threadpool(self.collect, targets)

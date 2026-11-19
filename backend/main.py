@@ -67,8 +67,12 @@ def create_app(db_path=Path("data/snake-arena.db")):
     async def lifespan(_app):
         db_path.parent.mkdir(parents=True, exist_ok=True)
         SQLModel.metadata.create_all(engine)
-        yield
-        engine.dispose()
+        await matches.resume_rounds()
+        try:
+            yield
+        finally:
+            await matches.stop_rounds()
+            engine.dispose()
 
     app = FastAPI(lifespan=lifespan)
     matches = MatchSocket(engine)
