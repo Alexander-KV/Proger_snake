@@ -90,6 +90,7 @@ export default function AuthDialog({
     type = 'text',
   ) {
     const invalid = Boolean(touched[id] && errors[id])
+    const showMessage = invalid || mode === 'register'
     return (
       <div className="auth-field">
         <label htmlFor={`auth-${id}`}>{label}</label>
@@ -112,7 +113,7 @@ export default function AuthDialog({
             }))
           }
           aria-invalid={invalid}
-          aria-describedby={`hint-${id}`}
+          aria-describedby={showMessage ? `hint-${id}` : undefined}
           autoComplete={
             id === 'password'
               ? mode === 'register'
@@ -123,9 +124,11 @@ export default function AuthDialog({
                 : 'off'
           }
         />
-        <small id={`hint-${id}`} className={invalid ? 'field-error' : ''}>
-          {invalid ? errors[id] : hint}
-        </small>
+        {showMessage && (
+          <small id={`hint-${id}`} className={invalid ? 'field-error' : ''}>
+            {invalid ? errors[id] : hint}
+          </small>
+        )}
       </div>
     )
   }
@@ -193,9 +196,7 @@ export default function AuthDialog({
             'Пароль',
             password,
             setPassword,
-            mode === 'register'
-              ? 'Не менее 4 символов.'
-              : 'Пароль вашей команды.',
+            'Не менее 4 символов.',
             'password',
           )}
           {error && (
