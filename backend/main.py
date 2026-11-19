@@ -1,4 +1,3 @@
-import hashlib
 import re
 import secrets
 import time
@@ -10,12 +9,14 @@ from urllib.parse import urlparse
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, field_validator
 from sqlalchemy.engine import URL
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from backend.auth import find_session, session_key
+from backend.match_socket import MatchSocket
 from backend.models import AuthSession, Team
 
 
@@ -70,6 +71,8 @@ def create_app(db_path=Path("data/snake-arena.db")):
         engine.dispose()
 
     app = FastAPI(lifespan=lifespan)
+    matches = MatchSocket(engine)
+    app.include_router(matches.router)
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
@@ -100,7 +103,7 @@ def create_app(db_path=Path("data/snake-arena.db")):
         token = secrets.token_urlsafe(32)
         db.add(
             AuthSession(
-                token_hash=hashlib.sha256(token.encode()).hexdigest(),
+                token_hash=session_key(token),
                 team_id=team_id,
                 expires=time.time() + 604800,
             )
@@ -152,28 +155,22 @@ def create_app(db_path=Path("data/snake-arena.db")):
     @app.get("/api/auth/me")
     def me(request: Request):
         token = request.cookies.get("session", "")
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
         with Session(engine) as db:
-            team = db.exec(
-                select(Team)
-                .join(AuthSession, Team.id == AuthSession.team_id)
-                .where(
-                    AuthSession.token_hash == token_hash,
-                    AuthSession.expires > time.time(),
-                )
-            ).first()
-            if not team:
+            identity = find_session(db, session_key(token))
+            if identity is None:
                 raise HTTPException(401, "Требуется вход")
+            team, _ = identity
             return {"username": team.username, "name": team.name}
 
     @app.post("/api/auth/logout", status_code=204)
-    def logout(request: Request, response: Response):
-        token = request.cookies.get("session", "")
+    def logout(request: Request, response: Response, background: BackgroundTasks):
+        key = session_key(request.cookies.get("session", ""))
         with Session(engine) as db:
-            session = db.get(AuthSession, hashlib.sha256(token.encode()).hexdigest())
+            session = db.get(AuthSession, key)
             if session:
                 db.delete(session)
                 db.commit()
+        background.add_task(matches.revoke, key)
         response.delete_cookie("session", path="/")
 
     return app

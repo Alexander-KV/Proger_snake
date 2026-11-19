@@ -7,6 +7,7 @@ dependencies = [
     "fastapi==0.162.6",
     "sqlmodel==0.0.50",
     "uvicorn==0.54.0",
+    "websockets>=17.4",
 ]
 
 [dependency-groups]
