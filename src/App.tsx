@@ -106,6 +106,31 @@ function App() {
     requestAnimationFrame(() => headingRef.current?.focus())
   }
 
+  const logoutDialog = useRef<HTMLDialogElement>(null)
+  const loginButton = useRef<HTMLButtonElement>(null)
+  const [logoutPending, setLogoutPending] = useState(false)
+  const [logoutError, setLogoutError] = useState(false)
+
+  async function confirmLogout() {
+    setLogoutPending(true)
+    setLogoutError(false)
+    try {
+      const response = await fetch('/api/auth/logout', { method: 'POST' })
+      if (!response.ok) {
+        setLogoutError(true)
+        return
+      }
+      logoutDialog.current?.close()
+      setTeam(null)
+      setActiveSection(null)
+      requestAnimationFrame(() => loginButton.current?.focus())
+    } catch {
+      setLogoutError(true)
+    } finally {
+      setLogoutPending(false)
+    }
+  }
+
   function returnToMenu() {
     const previous = activeSection
     setActiveSection(null)
@@ -162,18 +187,9 @@ function App() {
             <>
               <span>Команда {team.name}</span>
               <button
-                onClick={async () => {
-                  try {
-                    const response = await fetch('/api/auth/logout', {
-                      method: 'POST',
-                    })
-                    if (response.ok) {
-                      setTeam(null)
-                      setActiveSection(null)
-                    }
-                  } catch {
-                    /* Сессия сохраняется до успешного выхода. */
-                  }
+                onClick={() => {
+                  setLogoutError(false)
+                  logoutDialog.current?.showModal()
                 }}
               >
                 Выйти
@@ -181,7 +197,9 @@ function App() {
             </>
           ) : (
             <>
-              <button onClick={() => setAuthMode('login')}>Войти</button>
+              <button ref={loginButton} onClick={() => setAuthMode('login')}>
+                Войти
+              </button>
               <button
                 className="header-register"
                 onClick={() => setAuthMode('register')}
@@ -192,6 +210,38 @@ function App() {
           )}
         </div>
       </header>
+
+      <dialog
+        ref={logoutDialog}
+        className="auth-dialog"
+        aria-labelledby="logout-title"
+        onCancel={(event) => {
+          if (logoutPending) event.preventDefault()
+        }}
+      >
+        <h2 id="logout-title">Выйти из аккаунта?</h2>
+        {logoutError && (
+          <p className="field-error" role="alert">
+            Не удалось выйти. Попробуйте ещё раз.
+          </p>
+        )}
+        <div className="auth-actions">
+          <button
+            className="auth-secondary"
+            disabled={logoutPending}
+            onClick={confirmLogout}
+          >
+            {logoutPending ? 'Выходим…' : 'Выйти'}
+          </button>
+          <button
+            autoFocus
+            disabled={logoutPending}
+            onClick={() => logoutDialog.current?.close()}
+          >
+            Отмена
+          </button>
+        </div>
+      </dialog>
 
       <main id="main" className="main-layout">
         <section className="hero" aria-labelledby="hero-title">
