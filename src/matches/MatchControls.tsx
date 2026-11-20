@@ -33,7 +33,7 @@ export default function MatchControls({
           }}
         >
           <label htmlFor="match-preparation-minutes">
-            Время на написание, мин.
+            Время на написание алгоритма, мин.
           </label>
           <input
             id="match-preparation-minutes"

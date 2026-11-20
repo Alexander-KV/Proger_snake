@@ -1,6 +1,10 @@
 # AI
 .codex
 
+# Secrets
+.env*
+!.env.*.example
+
 # Logs
 logs
 *.log
