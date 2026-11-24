@@ -5,7 +5,8 @@ from pydantic import BaseModel, Field, StrictInt
 from sqlalchemy import func, text
 from sqlmodel import Session, select
 
-from backend.models import Match, MatchMembership, Team
+from backend.models import Match, MatchMembership, MatchRound, Team
+from backend.round_engine import TICK_SECONDS, RoundState, advance, create_round
 
 MatchId = Annotated[StrictInt, Field(gt=0, le=2**63 - 1)]
 
@@ -18,6 +19,10 @@ class CreateMatch(BaseModel):
 
 class MatchTarget(BaseModel):
     match_id: MatchId
+
+
+class StartMatch(MatchTarget):
+    countdown: Literal[0, 3, 5, 10] = 0
 
 
 class Subscription(BaseModel):
@@ -79,7 +84,7 @@ def snapshot(db: Session, team_id: int, view: Subscription) -> dict:
         rows = db.exec(
             select(Match, func.coalesce(counts.c.players, 0))
             .outerjoin(counts, Match.id == counts.c.match_id)
-            .where(Match.status != "closed")
+            .where(Match.status.in_(("waiting", "countdown", "running")))
             .order_by(Match.created_at.desc(), Match.id.desc())
         )
         return {
@@ -92,27 +97,53 @@ def snapshot(db: Session, team_id: int, view: Subscription) -> dict:
     match = require_match(db, view.match_id)
     if match.status == "closed":
         raise MatchError("match_closed", "Организатор закрыл лобби.")
-    if membership is None or membership.match_id != match.id:
-        raise MatchError("forbidden", "Лобби доступно организатору и участникам.")
-
     organizer = db.get(Team, match.organizer_team_id)
     assert organizer is not None
-    participants = db.exec(
+    match_round = db.get(MatchRound, view.match_id)
+    state = (
+        RoundState.model_validate_json(match_round.state_json) if match_round else None
+    )
+    my_role = (
+        membership.role if membership and membership.match_id == match.id else None
+    )
+    if match.status == "finished" and state:
+        if team_id == organizer.id:
+            my_role = match.organizer_role
+        elif any(snake.team_id == team_id for snake in state.snakes):
+            my_role = "participant"
+    if my_role is None:
+        raise MatchError("forbidden", "Лобби доступно организатору и участникам.")
+
+    participants = (
+        [(snake.team_id, snake.name) for snake in state.snakes]
+        if state
+        else list(match_players(db, view.match_id))
+    )
+    players = [{"id": player_id, "name": name} for player_id, name in participants]
+    value = {
+        **summarize(match, len(players)),
+        "organizer": {"id": organizer.id, "name": organizer.name},
+        "participants": players,
+        "my_role": my_role,
+    }
+    if match_round and state:
+        value["round"] = {
+            **state.model_dump(mode="json"),
+            "countdown_seconds": max(0, match_round.starts_at - time()),
+        }
+    return value
+
+
+def match_players(db: Session, match_id: int):
+    return db.exec(
         select(Team.id, Team.name)
         .join(MatchMembership, Team.id == MatchMembership.team_id)
         .where(
-            MatchMembership.match_id == match.id,
+            MatchMembership.match_id == match_id,
             MatchMembership.role != "organizer_observer",
         )
         .order_by(Team.id)
     )
-    players = [{"id": player_id, "name": name} for player_id, name in participants]
-    return {
-        **summarize(match, len(players)),
-        "organizer": {"id": organizer.id, "name": organizer.name},
-        "participants": players,
-        "my_role": membership.role,
-    }
 
 
 def require_available(membership: MatchMembership | None):
@@ -184,23 +215,79 @@ def update_match(db: Session, team_id: int, action: str, match_id: int) -> bool:
             return False
         require_waiting(match)
         match.status = "closed"
-        for member in db.exec(
-            select(MatchMembership).where(MatchMembership.match_id == match_id)
-        ):
-            db.delete(member)
+        release_memberships(db, match_id)
     return True
 
 
-def mutate(db: Session, team_id: int, action: str, payload: dict, key: str):
-    data = (
-        CreateMatch.model_validate(payload)
-        if action == "create_match"
-        else MatchTarget.model_validate(payload)
+def release_memberships(db: Session, match_id: int):
+    for member in db.exec(
+        select(MatchMembership).where(MatchMembership.match_id == match_id)
+    ):
+        db.delete(member)
+
+
+def start_match(db: Session, team_id: int, data: StartMatch) -> bool:
+    match = require_match(db, data.match_id)
+    if team_id != match.organizer_team_id:
+        raise MatchError("forbidden", "Только организатор может начать матч.")
+    if db.get(MatchRound, data.match_id) is not None:
+        return False
+    require_waiting(match)
+    players = list(match_players(db, data.match_id))
+    if len(players) < 2:
+        raise MatchError("not_enough_players", "Для начала нужны хотя бы две команды.")
+    starts_at = time() + data.countdown
+    state = create_round(match.board_size, data.match_id, players)
+    match.status = "countdown" if data.countdown else "running"
+    db.add(
+        MatchRound(
+            match_id=data.match_id,
+            starts_at=starts_at,
+            next_tick_at=time() + TICK_SECONDS,
+            state_json=state.model_dump_json(),
+        )
     )
+    return True
+
+
+def advance_rounds(db: Session) -> list[tuple[int, bool]]:
+    now = time()
+    due = db.exec(
+        select(Match, MatchRound)
+        .join(MatchRound, MatchRound.match_id == Match.id)
+        .where(
+            Match.status.in_(("countdown", "running")), MatchRound.next_tick_at <= now
+        )
+    ).all()
+    changes = []
+    for match, match_round in due:
+        match_round.next_tick_at = now + TICK_SECONDS
+        previous_status = match.status
+        if previous_status == "countdown":
+            if match_round.starts_at <= now:
+                match.status = "running"
+        else:
+            state = RoundState.model_validate_json(match_round.state_json)
+            if advance(state, match.board_size, match_round.match_id):
+                match.status = "finished"
+                release_memberships(db, match_round.match_id)
+            match_round.state_json = state.model_dump_json()
+        changes.append((match_round.match_id, match.status != previous_status))
+    if changes:
+        db.commit()
+    return changes
+
+
+def mutate(db: Session, team_id: int, action: str, payload: dict, key: str):
     db.execute(text("BEGIN IMMEDIATE"))
-    if isinstance(data, CreateMatch):
+    if action == "create_match":
+        data = CreateMatch.model_validate(payload)
         match_id, changed = create_match(db, team_id, data, key)
+    elif action == "start_match":
+        data = StartMatch.model_validate(payload)
+        match_id, changed = data.match_id, start_match(db, team_id, data)
     else:
+        data = MatchTarget.model_validate(payload)
         match_id = data.match_id
         changed = update_match(db, team_id, action, match_id)
     db.commit()

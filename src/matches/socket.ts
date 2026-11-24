@@ -6,7 +6,7 @@ export type MatchSummary = {
   capacity: number
   board_size: number
   participant_count: number
-  status: string
+  status: 'waiting' | 'countdown' | 'running' | 'finished'
 }
 
 export type MatchListData = {
@@ -15,11 +15,30 @@ export type MatchListData = {
 }
 
 type TeamLabel = { id: number; name: string }
+type Cell = [number, number]
+
+export type RoundSnake = {
+  team_id: number
+  name: string
+  strategy: 'food' | 'space'
+  body: Cell[]
+  score: number
+  eliminated_at: number | null
+}
+
+export type RoundState = {
+  tick: number
+  snakes: RoundSnake[]
+  food: Cell | null
+  winner_ids: number[]
+  countdown_seconds: number
+}
 
 export type MatchLobbyData = MatchSummary & {
   organizer: TeamLabel
   participants: TeamLabel[]
   my_role: MatchRole
+  round?: RoundState
 }
 
 export type CreateMatchInput = {

@@ -1,6 +1,7 @@
 import asyncio
 import json
 from dataclasses import dataclass, field
+from logging import getLogger
 from time import time
 from typing import Literal
 
@@ -13,7 +14,9 @@ from sqlmodel import Session
 from starlette.concurrency import run_in_threadpool
 
 from backend.auth import find_session, session_key
-from backend.matches import MatchError, Subscription, mutate, snapshot
+from backend.matches import MatchError, Subscription, advance_rounds, mutate, snapshot
+
+logger = getLogger(__name__)
 
 
 class Message(BaseModel):
@@ -24,6 +27,7 @@ class Message(BaseModel):
         "join_match",
         "leave_match",
         "close_match",
+        "start_match",
     ]
     request_id: str = Field(pattern=r"^[a-fA-F0-9]{32}$")
     payload: dict
@@ -63,6 +67,22 @@ class MatchSocket:
         self.router.add_api_websocket_route("/api/ws", self.connect)
         self.peers: set[Peer] = set()
         self.lock = asyncio.Lock()
+
+    def tick(self):
+        with Session(self.engine) as db:
+            return advance_rounds(db)
+
+    async def run_rounds(self):
+        while True:
+            await asyncio.sleep(0.05)
+            async with self.lock:
+                try:
+                    changes = await run_in_threadpool(self.tick)
+                except OperationalError:
+                    logger.exception("Не удалось обновить состояние матчей.")
+                    continue
+                for match_id, status_changed in changes:
+                    await self.publish(match_id, include_list=status_changed)
 
     def identify(self, key: str) -> Peer | None:
         with Session(self.engine) as db:
@@ -265,14 +285,19 @@ class MatchSocket:
                     )
         return messages
 
-    async def publish(self, match_id: int):
+    async def publish(self, match_id: int, *, include_list: bool = True):
         targets = [
             peer
             for peer in self.peers
             if not peer.closing
             and peer.view is not None
-            and (peer.view.view == "list" or peer.view.match_id == match_id)
+            and (
+                (include_list and peer.view.view == "list")
+                or (peer.view.view == "lobby" and peer.view.match_id == match_id)
+            )
         ]
+        if not targets:
+            return
         try:
             messages = await run_in_threadpool(self.collect, targets)
         except OperationalError:

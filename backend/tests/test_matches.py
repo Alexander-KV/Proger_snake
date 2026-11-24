@@ -154,6 +154,47 @@ def test_reconnect_after_restart_gets_current_snapshot(tmp_path):
             assert snapshot["participants"][0]["name"] == "Guest"
 
 
+def test_countdown_round_and_results_are_shared(server, monkeypatch):
+    from backend import round_engine
+
+    monkeypatch.setattr(round_engine, "MAX_TICKS", 3)
+    host = register(server, "Host")
+    player = register(server, "Player")
+    outsider = register(server, "Outsider")
+    with (
+        server.websocket_connect("/api/ws", headers=host) as a,
+        server.websocket_connect("/api/ws", headers=player) as b,
+        server.websocket_connect("/api/ws", headers=outsider) as c,
+    ):
+        match = create(a, "organizer_player")["payload"]["id"]
+        target = {"match_id": match}
+        assert send(a, "start_match", target)["code"] == "not_enough_players"
+        assert send(b, "join_match", target)["type"] == "result"
+        assert send(b, "start_match", target)["code"] == "forbidden"
+        assert subscribe(a, "lobby", **target)["status"] == "waiting"
+        assert subscribe(b, "lobby", **target)["status"] == "waiting"
+        assert send(a, "start_match", target | {"countdown": 3})["type"] == "result"
+        assert send(c, "join_match", target)["code"] == "match_not_waiting"
+        assert send(a, "start_match", target)["type"] == "result"
+        assert a.receive_json()["payload"]["status"] == "countdown"
+        assert b.receive_json()["payload"]["status"] == "countdown"
+
+        def observe(socket):
+            for _ in range(30):
+                frame = socket.receive_json()["payload"]
+                if frame["status"] == "finished":
+                    return frame["round"]
+            pytest.fail("Не получен итог раунда.")
+
+        final_round = observe(a)
+        assert final_round == observe(b)
+        assert final_round["tick"] == 3
+        assert final_round["winner_ids"]
+        assert subscribe(b, "list")["current_match_id"] is None
+        assert subscribe(b, "lobby", **target)["round"] == final_round
+        assert send(c, "subscribe", {"view": "lobby", **target})["code"] == "forbidden"
+
+
 def test_socket_closes_on_logout(server):
     host = register(server, "Host")
     with server.websocket_connect("/api/ws", headers=host) as socket:

@@ -7,6 +7,7 @@ from ipaddress import ip_address
 from pathlib import Path
 from urllib.parse import urlparse
 
+from anyio import create_task_group
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
@@ -62,16 +63,23 @@ def create_app(db_path=Path("data/snake-arena.db")):
         URL.create("sqlite", database=str(db_path)),
         connect_args={"timeout": 10, "check_same_thread": False},
     )
+    matches = MatchSocket(engine)
 
     @asynccontextmanager
     async def lifespan(_app):
         db_path.parent.mkdir(parents=True, exist_ok=True)
         SQLModel.metadata.create_all(engine)
-        yield
-        engine.dispose()
+        try:
+            async with create_task_group() as tasks:
+                tasks.start_soon(matches.run_rounds)
+                try:
+                    yield
+                finally:
+                    tasks.cancel_scope.cancel()
+        finally:
+            engine.dispose()
 
     app = FastAPI(lifespan=lifespan)
-    matches = MatchSocket(engine)
     app.include_router(matches.router)
 
     @app.middleware("http")

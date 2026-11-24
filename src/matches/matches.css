@@ -220,6 +220,85 @@
   font-size: 0.94rem;
 }
 
+.match-round-board {
+  display: grid;
+  grid-template: repeat(var(--board-size), minmax(0, 1fr)) / repeat(
+      var(--board-size),
+      minmax(0, 1fr)
+    );
+}
+
+@media (min-width: 651px) {
+  .match-round-field {
+    width: min(100%, max(20rem, calc(100dvh - 22rem)));
+  }
+}
+
+[data-snake='0'] {
+  --snake-color: #a61932;
+}
+[data-snake='1'] {
+  --snake-color: #155384;
+}
+[data-snake='2'] {
+  --snake-color: #27624a;
+}
+[data-snake='3'] {
+  --snake-color: #653e83;
+}
+
+.match-snake-head,
+.match-snake-cell,
+.match-snake-swatch {
+  background: var(--snake-color);
+}
+
+.match-snake-head {
+  outline: 1px solid #fff;
+  outline-offset: -2px;
+}
+
+.match-snake-cell {
+  opacity: 0.75;
+}
+
+.match-snake-swatch {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-right: 0.5rem;
+}
+
+.match-food {
+  margin: 15%;
+  border: 1px solid #734800;
+  background: #edb741;
+}
+
+.match-round-score {
+  text-align: right;
+}
+
+.match-round-teams {
+  margin-bottom: 1rem;
+}
+
+.match-round-controls {
+  display: grid;
+  justify-items: start;
+  gap: 0.65rem;
+}
+
+.match-round-controls h3 {
+  font-weight: 700;
+}
+
+.match-round-controls select {
+  border: 1px solid #a49a9e;
+  background: #fff;
+  padding: 0.4rem 0.6rem;
+}
+
 .match-team-list,
 .match-empty-roster {
   margin-top: 0.8rem;

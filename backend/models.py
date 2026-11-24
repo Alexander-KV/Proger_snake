@@ -41,3 +41,12 @@ class MatchMembership(SQLModel, table=True):
     team_id: int = Field(primary_key=True, foreign_key="teams.id")
     match_id: int = Field(foreign_key="matches.id", index=True)
     role: str
+
+
+class MatchRound(SQLModel, table=True):
+    __tablename__ = "match_rounds"
+
+    match_id: int = Field(primary_key=True, foreign_key="matches.id")
+    starts_at: float
+    next_tick_at: float = Field(index=True)
+    state_json: str

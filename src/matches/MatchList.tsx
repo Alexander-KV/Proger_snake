@@ -107,11 +107,13 @@ export default function MatchList({
                         {match.board_size} × {match.board_size}
                       </td>
                       <td>
-                        {!waiting
-                          ? 'Идёт игра'
-                          : full
-                            ? 'Заполнен'
-                            : 'Ожидает команды'}
+                        {match.status === 'countdown'
+                          ? 'До старта'
+                          : match.status === 'running'
+                            ? 'Идёт игра'
+                            : full
+                              ? 'Заполнен'
+                              : 'Ожидает команды'}
                       </td>
                       <td>
                         {isCurrent ? (
@@ -119,7 +121,7 @@ export default function MatchList({
                             className="match-link"
                             onClick={() => onOpen(match.id)}
                           >
-                            Открыть лобби
+                            {waiting ? 'Открыть лобби' : 'Открыть матч'}
                           </button>
                         ) : waiting && !full && !hasCurrentMatch ? (
                           <button

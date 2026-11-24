@@ -1,5 +1,6 @@
 import { useRef, useState, type CSSProperties } from 'react'
 import MatchGuide from './MatchGuide'
+import MatchRound from './MatchRound'
 import { MatchError, MatchSocket } from './socket'
 import useMatchSubscription from './useMatchSubscription'
 
@@ -21,6 +22,7 @@ export default function MatchLobby({
   const [guide, setGuide] = useState<'rules' | 'docs'>()
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
+  const [countdown, setCountdown] = useState(0)
   const dialog = useRef<HTMLDialogElement>(null)
   const guideButton = useRef<'rules' | 'docs'>('rules')
   const rulesButton = useRef<HTMLButtonElement>(null)
@@ -53,6 +55,18 @@ export default function MatchLobby({
     }
   }
 
+  async function start() {
+    setBusy(true)
+    setActionError('')
+    try {
+      await socket.send('start_match', { match_id: matchId, countdown })
+    } catch (error) {
+      if (error instanceof MatchError) setActionError(error.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (error)
     return (
       <>
@@ -73,6 +87,8 @@ export default function MatchLobby({
     )
   if (!data || !('participants' in data))
     return <p role="status">Загружаем состав…</p>
+  if (data.round)
+    return <MatchRound match={data} round={data.round} onBack={onBack} />
   if (guide)
     return (
       <div ref={guideHeading} tabIndex={-1}>
@@ -144,23 +160,53 @@ export default function MatchLobby({
             Документация
           </button>
         </div>
-        {!isOrganizer && actionError && (
+        {actionError && (
           <p className="match-error" role="alert">
             {actionError}
           </p>
         )}
         {isOrganizer ? (
-          <button
-            className="match-button"
-            type="button"
-            onClick={() => {
-              setActionError('')
-              dialog.current?.showModal()
-            }}
-            disabled={!online}
-          >
-            Закрыть лобби
-          </button>
+          <div className="match-round-controls">
+            <h3>Запуск матча</h3>
+            <label htmlFor="match-countdown">Отсчёт до старта</label>
+            <select
+              id="match-countdown"
+              value={countdown}
+              disabled={busy || !online}
+              onChange={(event) => setCountdown(Number(event.target.value))}
+            >
+              <option value={0}>Без отсчёта</option>
+              <option value={3}>3 секунды</option>
+              <option value={5}>5 секунд</option>
+              <option value={10}>10 секунд</option>
+            </select>
+            {data.participant_count < 2 && (
+              <p className="match-muted">
+                Для начала нужны хотя бы две команды.
+              </p>
+            )}
+            <div className="match-actions">
+              <button
+                className="match-button is-primary"
+                type="button"
+                disabled={busy || !online || data.participant_count < 2}
+                onClick={() => void start()}
+              >
+                Начать матч
+              </button>
+              <button
+                className="match-button"
+                type="button"
+                onClick={() => {
+                  setActionError('')
+                  dialog.current?.showModal()
+                }}
+                disabled={busy || !online}
+              >
+                Закрыть лобби
+              </button>
+            </div>
+          </div>
         ) : (
           <button
             className="match-button"
